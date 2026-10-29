@@ -1,13 +1,12 @@
 """Home dashboard backend for the Hermes desktop app.
 
 Port of ~/dashboard-v2/server.py into gateway routes, mounted at /api/plugins/hermes-dashboard/.
-Read-only Home Assistant proxy plus direct WiZ status over UDP. The HA token is read from
+Home Assistant only: all reads and writes go through HA's REST API. The HA token is read from
 ~/.hermes/.env and never leaves this process. Controls: light only (power, brightness, scene).
 Plugs and climate are display-only. Every write is checked against an allow-list.
 """
 import datetime
 import json
-import socket
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -47,12 +46,11 @@ PLUGS = {
     "switch.tv": ("TV", "sensor.tv_current_consumption", "sensor.tv_today_s_consumption", "sensor.tv_this_month_s_consumption"),
     "switch.homelab": ("Homelab", "sensor.homelab_current_consumption", "sensor.homelab_today_s_consumption", "sensor.homelab_this_month_s_consumption"),
 }
-# HA entity -> name and bulb LAN address (DHCP; reserve on the router)
+# HA light entity -> display name. Only these entities can be controlled.
 LIGHTS = {
-    "light.wiz_rgbw_tunable_d1d37c": {"name": "Bedroom", "ip": "192.168.1.160"},
-    "light.wiz_rgbww_tunable_6348c6_powercalc": {"name": "Kitchen", "ip": "192.168.1.100"},
+    "light.wiz_rgbw_tunable_d1d37c": {"name": "Bedroom"},
+    "light.wiz_rgbww_tunable_6348c6_powercalc": {"name": "Kitchen"},
 }
-SCENES = {12: "Daylight", 14: "Night light"}
 EFFECTS = {"Night light", "Daylight"}
 WEATHER = "weather.forecast_home"
 CLIMATE = {
@@ -109,38 +107,22 @@ def forecast():
     return _FC["d"]
 
 
-# ---- WiZ bulb direct status (UDP 38899). Silence = unpowered or offline. ----
-def bulb_pilot(ip):
-    for _ in range(2):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(0.6)
-        try:
-            sock.sendto(b'{"method":"getPilot","params":{}}', (ip, 38899))
-            return json.loads(sock.recvfrom(2048)[0])["result"]
-        except Exception:
-            pass
-        finally:
-            sock.close()
-    return None
-
-
 def light_view(entity):
-    spec = LIGHTS[entity]
-    base = {"id": entity, "name": spec["name"]}
-    p = bulb_pilot(spec["ip"])
-    if p is None:
+    # State comes from HA's own light entity. Its brightness is 0-255 and its effect is the scene name.
+    st = get(entity)
+    base = {"id": entity, "name": LIGHTS[entity]["name"]}
+    if st["state"] in ("unavailable", "unknown"):
         return {**base, "state": "unavailable", "brightness": None, "effect": None}
-    if not p.get("state"):
+    if st["state"] != "on":
         return {**base, "state": "off", "brightness": None, "effect": None}
-    dim = p.get("dimming")
+    attrs = st.get("attributes", {})
     return {**base, "state": "on",
-            "brightness": round(dim * 255 / 100) if dim is not None else None,
-            "effect": SCENES.get(p.get("sceneId"), "Custom")}
+            "brightness": attrs.get("brightness"),
+            "effect": attrs.get("effect") or None}
 
 
 def all_lights():
-    with ThreadPoolExecutor(max_workers=len(LIGHTS)) as ex:
-        return list(ex.map(light_view, LIGHTS))
+    return [light_view(e) for e in LIGHTS]
 
 
 # ---- History: allow-listed, cached 4 min, downsampled, stats from full data ----
