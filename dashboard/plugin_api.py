@@ -92,21 +92,6 @@ def num(eid):
         return None
 
 
-_FC = {"t": 0.0, "d": []}
-
-
-def forecast():
-    if not _FC["d"] or time.time() - _FC["t"] > 600:
-        try:
-            r = ha("POST", "/api/services/weather/get_forecasts?return_response",
-                   {"entity_id": WEATHER, "type": "daily"})
-            _FC["d"] = r["service_response"][WEATHER]["forecast"][:7]
-            _FC["t"] = time.time()
-        except Exception:
-            pass
-    return _FC["d"]
-
-
 def light_view(entity):
     # State comes from HA's own light entity. Its brightness is 0-255 and its effect is the scene name.
     st = get(entity)
@@ -187,8 +172,7 @@ def snapshot():
     return {
         "generated": datetime.datetime.now().isoformat(timespec="seconds"),
         "weather": {"state": get(WEATHER)["state"], "temperature": w.get("temperature"),
-                    "humidity": w.get("humidity"), "wind_speed": w.get("wind_speed"),
-                    "forecast": forecast()},
+                    "humidity": w.get("humidity"), "wind_speed": w.get("wind_speed")},
         "lights": all_lights(),
         "plugs": [{"id": e, "name": n, "on": get(e)["state"] == "on", "state": get(e)["state"],
                    "watts": num(pw), "kwh_today": num(kd), "kwh_month": num(km), "series": pw}
