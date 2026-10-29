@@ -1,8 +1,8 @@
 /**
  * Home dashboard page for the Hermes desktop app.
  * Data comes from the plugin backend (plugin_api.py) via ctx.rest. The HA token never reaches this file.
- * Built only from the SDK's own UI kit and app theme variables, so it follows the app's theme.
- * Plain ESM, no JSX.
+ * Two tabs: Home (clock, today's weather, lights, room temperatures) and Energy (plugs).
+ * Built only from the SDK UI kit and app theme variables. Plain ESM, no JSX.
  */
 
 import {
@@ -23,7 +23,6 @@ import { useEffect, useState } from 'react'
 const ID = 'hermes-dashboard'
 const PATH = '/home-dashboard'
 const TABS = [
-  { id: 'today', label: 'Today' },
   { id: 'home', label: 'Home' },
   { id: 'energy', label: 'Energy' }
 ]
@@ -32,7 +31,7 @@ const RANGES = [
   { id: 168, label: '7 days' }
 ]
 
-// ── theme tokens (app variables only) ─────────────────────────────────────
+// Theme tokens only. No colour literals.
 const TEXT = 'var(--ui-text-primary)'
 const DIM = 'var(--ui-text-secondary)'
 const FAINT = 'var(--ui-text-quaternary)'
@@ -43,7 +42,7 @@ const PAGE = {
   height: '100%',
   overflow: 'auto',
   boxSizing: 'border-box',
-  padding: '28px 32px 40px',
+  padding: '24px 32px 40px',
   maxWidth: 1180,
   margin: '0 auto',
   color: TEXT,
@@ -60,10 +59,10 @@ const CARD = {
   minWidth: 0
 }
 const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }
-const LABEL = { fontSize: 12, letterSpacing: '0.04em', textTransform: 'uppercase', color: FAINT }
 const BIG = { fontSize: 34, fontWeight: 600, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }
 
-// ── data ──────────────────────────────────────────────────────────────────
+const fmt = (v, digits = 0) => (v == null || Number.isNaN(Number(v)) ? '–' : Number(v).toFixed(digits))
+
 function useDash(ctx, path, interval) {
   return useQuery({
     queryKey: [ID, path],
@@ -81,8 +80,6 @@ async function lightAction(ctx, qc, entity, action, value) {
     host.notify({ kind: 'error', message: `Light ${action} failed: ${err?.message || err}` })
   }
 }
-
-const fmt = (v, digits = 0) => (v == null || Number.isNaN(Number(v)) ? '–' : Number(v).toFixed(digits))
 
 // Skeleton while loading, error panel if the backend does not answer. Returns null once data exists.
 function gate(query, what) {
@@ -102,7 +99,6 @@ function gate(query, what) {
   })
 }
 
-// ── pieces ────────────────────────────────────────────────────────────────
 function Clock() {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -112,10 +108,22 @@ function Clock() {
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const date = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })
   return jsxs('div', {
-    style: { fontVariantNumeric: 'tabular-nums' },
+    style: {
+      height: '50vh',
+      minHeight: 240,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center',
+      fontVariantNumeric: 'tabular-nums'
+    },
     children: [
-      jsx('div', { style: { fontSize: 72, fontWeight: 300, lineHeight: 1, letterSpacing: '-0.02em' }, children: time }),
-      jsx('div', { style: { fontSize: 16, color: DIM, marginTop: 10 }, children: date })
+      jsx('div', {
+        style: { fontSize: 'min(40vh, 18vw)', fontWeight: 300, lineHeight: 1, letterSpacing: '-0.03em' },
+        children: time
+      }),
+      jsx('div', { style: { fontSize: 18, color: DIM, marginTop: 16 }, children: date })
     ]
   })
 }
@@ -132,23 +140,6 @@ function Card({ title, aside, children }) {
         ]
       }),
       children
-    ]
-  })
-}
-
-function Tile({ label, value, unit, sub }) {
-  return jsxs('div', {
-    style: CARD,
-    children: [
-      jsx('div', { style: LABEL, children: label }),
-      jsxs('div', {
-        style: { display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 10 },
-        children: [
-          jsx('span', { style: BIG, children: value }),
-          unit ? jsx('span', { style: { fontSize: 14, color: DIM }, children: unit }) : null
-        ]
-      }),
-      sub ? jsx('div', { style: { fontSize: 13, color: DIM, marginTop: 8 }, children: sub }) : null
     ]
   })
 }
@@ -206,65 +197,104 @@ function Stats({ stats, unit = '' }) {
   })
 }
 
-// ── tabs ──────────────────────────────────────────────────────────────────
-function TodayTab({ ctx }) {
-  const snap = useDash(ctx, '/snapshot', 15000)
-  const blocked = gate(snap, 'Home data')
-  if (blocked) return blocked
+function WeatherToday({ w }) {
+  const bits = [w.state, w.humidity != null ? `${fmt(w.humidity)}% humidity` : null].filter(Boolean)
+  return jsx(Card, {
+    title: 'Weather today',
+    aside: 'Outside',
+    children: jsxs('div', {
+      style: { display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' },
+      children: [
+        jsx('span', { style: BIG, children: w.temperature != null ? `${fmt(w.temperature, 1)}°` : '–' }),
+        jsx('span', { style: { fontSize: 14, color: DIM }, children: bits.join(' · ') })
+      ]
+    })
+  })
+}
 
-  const w = snap.data.weather
-  const lights = snap.data.lights || []
-  const plugs = snap.data.plugs || []
-  const powerNow = plugs.reduce((sum, p) => sum + (p.watts || 0), 0)
-  const lightsOn = lights.filter(l => l.state === 'on')
-  const days = (w.forecast || []).slice(0, 7)
-
-  return jsxs('div', {
-    style: { display: 'flex', flexDirection: 'column', gap: 24 },
+function LightCard({ ctx, qc, light: l }) {
+  const off = l.state === 'off'
+  const unreachable = l.state === 'unavailable'
+  const status = unreachable ? 'Unreachable' : off ? 'Off' : 'On'
+  const detail = unreachable
+    ? 'Home Assistant reports the light unavailable'
+    : off
+      ? 'Light is off'
+      : `${l.effect || 'Custom'}${l.brightness != null ? ` · ${Math.round((l.brightness / 255) * 100)}%` : ''}`
+  return jsxs(Card, {
+    title: l.name,
+    aside: status,
     children: [
-      jsx(Clock, {}),
+      jsx('div', { style: { fontSize: 13, color: DIM }, children: detail }),
       jsxs('div', {
-        style: GRID,
+        style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 },
         children: [
-          jsx(Tile, {
-            label: 'Outside',
-            value: w.temperature != null ? `${fmt(w.temperature, 1)}°` : '–',
-            sub: [w.state, w.humidity != null ? `${w.humidity}% humidity` : null].filter(Boolean).join(' · ')
+          jsx(Button, {
+            key: 'toggle',
+            variant: 'chip',
+            size: 'sm',
+            disabled: unreachable,
+            onClick: () => lightAction(ctx, qc, l.id, 'toggle'),
+            children: off ? 'Turn on' : 'Turn off'
           }),
-          jsx(Tile, {
-            label: 'Power now',
-            value: fmt(powerNow),
-            unit: 'W',
-            sub: `${plugs.filter(p => p.watts != null).length} of ${plugs.length} plugs reporting`
+          jsx(Button, {
+            key: 'day',
+            variant: 'chip',
+            size: 'sm',
+            disabled: unreachable,
+            onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Daylight'),
+            children: 'Daylight'
           }),
-          jsx(Tile, {
-            label: 'Lights on',
-            value: `${lightsOn.length}`,
-            unit: `of ${lights.length}`,
-            sub: lightsOn.length ? lightsOn.map(l => l.name).join(', ') : 'All off'
+          jsx(Button, {
+            key: 'night',
+            variant: 'chip',
+            size: 'sm',
+            disabled: unreachable,
+            onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Night light'),
+            children: 'Night light'
           })
         ]
-      }),
-      jsx(Card, {
-        title: 'Forecast',
-        aside: 'Daily',
-        children: days.length
-          ? jsx('div', {
-              style: { display: 'grid', gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`, gap: 8 },
-              children: days.map((d, i) =>
-                jsxs('div', {
-                  key: i,
-                  style: { textAlign: 'center', padding: '10px 4px', borderRadius: 10, background: 'var(--ui-control-hover-background)' },
-                  children: [
-                    jsx('div', { style: { fontSize: 12, color: DIM }, children: new Date(d.datetime).toLocaleDateString([], { weekday: 'short' }) }),
-                    jsx('div', { style: { fontSize: 18, fontWeight: 600, marginTop: 6, fontVariantNumeric: 'tabular-nums' }, children: `${fmt(d.temperature)}°` }),
-                    jsx('div', { style: { fontSize: 13, color: FAINT, marginTop: 2, fontVariantNumeric: 'tabular-nums' }, children: d.templow != null ? `${fmt(d.templow)}°` : '' })
-                  ]
-                })
-              )
-            })
-          : jsx('div', { style: { color: FAINT, fontSize: 13 }, children: 'No forecast from Home Assistant yet.' })
       })
+    ]
+  })
+}
+
+function RoomCard({ c, t }) {
+  return jsxs(Card, {
+    title: c.name,
+    aside: '24 h',
+    children: [
+      jsxs('div', {
+        style: { display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' },
+        children: [
+          jsx('span', { style: BIG, children: c.temp != null ? `${fmt(c.temp, 1)}°` : '–' }),
+          c.hum != null ? jsx('span', { style: { fontSize: 13, color: DIM }, children: `${fmt(c.hum)}% humidity` }) : null
+        ]
+      }),
+      jsx(Spark, { points: t.points }),
+      jsx(Stats, { stats: t.stats, unit: '°' })
+    ]
+  })
+}
+
+function PlugCard({ plug: p, series: s }) {
+  return jsxs(Card, {
+    title: p.name,
+    aside: p.state === 'on' ? 'On' : p.state === 'off' ? 'Off' : p.state,
+    children: [
+      jsxs('div', {
+        style: { display: 'flex', alignItems: 'baseline', gap: 6 },
+        children: [
+          jsx('span', { style: BIG, children: p.watts != null ? fmt(p.watts) : '–' }),
+          jsx('span', { style: { fontSize: 14, color: DIM }, children: 'W' })
+        ]
+      }),
+      jsx('div', {
+        style: { fontSize: 13, color: DIM },
+        children: `${fmt(p.kwh_today, 2)} kWh today · ${fmt(p.kwh_month, 1)} kWh this month`
+      }),
+      jsx(Spark, { points: s.points }),
+      jsx(Stats, { stats: s.stats, unit: ' W' })
     ]
   })
 }
@@ -283,77 +313,15 @@ function HomeTab({ ctx }) {
   return jsxs('div', {
     style: { display: 'flex', flexDirection: 'column', gap: 24 },
     children: [
+      jsx(Clock, {}),
+      jsx(WeatherToday, { w: snap.data.weather }),
       jsx('div', {
         style: GRID,
-        children: lights.map(l => {
-          const off = l.state === 'off'
-          const unreachable = l.state === 'unavailable'
-          const status = unreachable ? 'Unreachable' : off ? 'Off' : 'On'
-          const detail = unreachable
-            ? 'No reply from the bulb'
-            : off
-              ? 'Light is off'
-              : `${l.effect || 'Custom'}${l.brightness != null ? ` · ${Math.round((l.brightness / 255) * 100)}%` : ''}`
-          return jsxs(Card, {
-            key: l.id,
-            title: l.name,
-            aside: status,
-            children: [
-              jsx('div', { style: { fontSize: 13, color: DIM }, children: detail }),
-              jsxs('div', {
-                style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 },
-                children: [
-                  jsx(Button, {
-                    key: 'toggle',
-                    variant: 'chip',
-                    size: 'sm',
-                    disabled: unreachable,
-                    onClick: () => lightAction(ctx, qc, l.id, 'toggle'),
-                    children: off ? 'Turn on' : 'Turn off'
-                  }),
-                  jsx(Button, {
-                    key: 'day',
-                    variant: 'chip',
-                    size: 'sm',
-                    disabled: unreachable,
-                    onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Daylight'),
-                    children: 'Daylight'
-                  }),
-                  jsx(Button, {
-                    key: 'night',
-                    variant: 'chip',
-                    size: 'sm',
-                    disabled: unreachable,
-                    onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Night light'),
-                    children: 'Night light'
-                  })
-                ]
-              })
-            ]
-          })
-        })
+        children: lights.map(l => jsx(LightCard, { key: l.id, ctx, qc, light: l }))
       }),
       jsx('div', {
         style: GRID,
-        children: climate.map(c => {
-          const t = series[c.series] || {}
-          return jsxs(Card, {
-            key: c.name,
-            title: c.name,
-            aside: '24 h',
-            children: [
-              jsxs('div', {
-                style: { display: 'flex', alignItems: 'baseline', gap: 12 },
-                children: [
-                  jsx('span', { style: BIG, children: c.temp != null ? `${fmt(c.temp, 1)}°` : '–' }),
-                  c.hum != null ? jsx('span', { style: { fontSize: 13, color: DIM }, children: `${fmt(c.hum)}% humidity` }) : null
-                ]
-              }),
-              jsx(Spark, { points: t.points }),
-              jsx(Stats, { stats: t.stats, unit: '°' })
-            ]
-          })
-        })
+        children: climate.map(c => jsx(RoomCard, { key: c.name, c, t: series[c.series] || {} }))
       })
     ]
   })
@@ -383,48 +351,24 @@ function EnergyTab({ ctx }) {
       }),
       jsx('div', {
         style: GRID,
-        children: plugs.map(p => {
-          const s = series[p.series] || {}
-          return jsxs(Card, {
-            key: p.id,
-            title: p.name,
-            aside: p.state === 'on' ? 'On' : p.state === 'off' ? 'Off' : p.state,
-            children: [
-              jsxs('div', {
-                style: { display: 'flex', alignItems: 'baseline', gap: 6 },
-                children: [
-                  jsx('span', { style: BIG, children: p.watts != null ? fmt(p.watts) : '–' }),
-                  jsx('span', { style: { fontSize: 14, color: DIM }, children: 'W' })
-                ]
-              }),
-              jsx('div', {
-                style: { fontSize: 13, color: DIM },
-                children: `${fmt(p.kwh_today, 2)} kWh today · ${fmt(p.kwh_month, 1)} kWh this month`
-              }),
-              jsx(Spark, { points: s.points }),
-              jsx(Stats, { stats: s.stats, unit: ' W' })
-            ]
-          })
-        })
+        children: plugs.map(p => jsx(PlugCard, { key: p.id, plug: p, series: series[p.series] || {} }))
       })
     ]
   })
 }
 
-// ── page ──────────────────────────────────────────────────────────────────
 function DashboardPage({ ctx }) {
-  const [tab, setTab] = useState('today')
+  const [tab, setTab] = useState('home')
   return jsxs('div', {
     style: PAGE,
     children: [
       jsxs('header', {
         style: HEAD,
         children: [
-          jsx('div', { style: { fontSize: 20, fontWeight: 600 }, children: 'Home' }),
+          jsx('div', { style: { fontSize: 20, fontWeight: 600 }, children: 'Dashboard' }),
           jsx(SegmentedControl, { options: TABS, value: tab, onChange: setTab })
         ]
       }),
-      tab === 'today' ? jsx(TodayTab, { ctx }) : null,
       tab === 'home' ? jsx(HomeTab, { ctx }) : null,
       tab === 'energy' ? jsx(EnergyTab, { ctx }) : null
     ]
