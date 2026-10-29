@@ -1,0 +1,7 @@
+{
+  "name": "hermes-dashboard",
+  "label": "Home Dashboard",
+  "description": "Home Assistant and WiZ dashboard, served from the gateway. Token stays server-side.",
+  "version": "0.1.0",
+  "api": "plugin_api.py"
+}

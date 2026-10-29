@@ -1,0 +1,11 @@
+name: hermes-dashboard
+label: Home Dashboard
+kind: standalone
+version: 0.1.0
+author: Izen
+description: >
+  Home dashboard page for the Hermes desktop app. Backend reads Home Assistant
+  (token stays server-side in ~/.hermes/.env) and WiZ bulbs over LAN UDP.
+  Light control only; plugs and climate are display-only.
+provides_tools: []
+provides_hooks: []
