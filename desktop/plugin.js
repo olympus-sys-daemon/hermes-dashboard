@@ -2,7 +2,8 @@
  * Home dashboard page for the Hermes desktop app.
  * Data comes from the plugin backend (plugin_api.py) via ctx.rest. The HA token never reaches this file.
  * Two tabs: Home (clock, date, weather line, four small boxes) and Energy (plugs). Nothing scrolls.
- * Sizes are shares of the page box (container units), so the layout fits whatever size the pane has.
+ * The Home tab measures its own box in pixels and recomputes every size from that on each resize,
+ * so the layout fits the space the pane actually has.
  * Built only from the SDK UI kit and app theme variables. Plain ESM, no JSX.
  */
 
@@ -19,7 +20,7 @@ import {
   useQueryClient
 } from '@hermes/plugin-sdk'
 import { jsx, jsxs } from 'react/jsx-runtime'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 const ID = 'hermes-dashboard'
 const PATH = '/home-dashboard'
@@ -41,10 +42,9 @@ const SURFACE = 'var(--ui-bg-elevated)'
 const ACCENT = 'var(--ui-accent)'
 const GLOW = `color-mix(in srgb, ${ACCENT} 22%, transparent)`
 
-// The page is a size container. Everything inside sizes itself in cqw/cqh, measured against this box.
 const PAGE = {
   width: '100%',
-  height: '100vh',
+  height: '100%',
   minHeight: 0,
   boxSizing: 'border-box',
   padding: '12px 20px 16px',
@@ -52,8 +52,7 @@ const PAGE = {
   display: 'flex',
   flexDirection: 'column',
   gap: 12,
-  overflow: 'hidden',
-  containerType: 'size'
+  overflow: 'hidden'
 }
 const BODY = { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }
 const HOME = { flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }
@@ -64,17 +63,8 @@ const TOP = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '1.5cqh',
-  paddingBottom: '2cqh'
-}
-const BOXROW = {
-  flex: 'none',
-  height: '20cqh',
-  minHeight: 0,
-  display: 'grid',
-  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-  gridTemplateRows: 'minmax(0, 1fr)',
-  gap: 14
+  textAlign: 'center',
+  fontVariantNumeric: 'tabular-nums'
 }
 const CARD = {
   minHeight: 0,
@@ -90,16 +80,57 @@ const CARD = {
   overflow: 'hidden'
 }
 const TITLE = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }
-const NUM = {
-  fontSize: 'min(7cqh, 4.5cqw)',
+const numStyle = px => ({
+  fontSize: px,
   fontWeight: 300,
   lineHeight: 1,
   letterSpacing: '-0.02em',
   fontVariantNumeric: 'tabular-nums'
-}
+})
 const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }
 
 const fmt = (v, digits = 0) => (v == null || Number.isNaN(Number(v)) ? '–' : Number(v).toFixed(digits))
+
+// Measures an element's box in pixels and re-measures on every resize of it or the window.
+// If the pane gives the element no height, falls back to the window height minus an allowance.
+function useBox() {
+  const ref = useRef(null)
+  const [box, setBox] = useState({ w: 0, h: 0 })
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return undefined
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      const h = r.height > 0 ? r.height : window.innerHeight - 80
+      const next = { w: Math.floor(r.width), h: Math.floor(h) }
+      setBox(prev => (prev.w === next.w && prev.h === next.h ? prev : next))
+    }
+    measure()
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (ro) ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => {
+      if (ro) ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
+  return [ref, box]
+}
+
+// Every Home size in pixels, derived from the measured box. The bottom row takes a fixed share of the
+// height. The clock takes at most half of what is left above it and at most a sixth of the width.
+function homeSizes(box) {
+  const tileH = Math.min(Math.floor(box.h * 0.24), 240)
+  const topH = Math.max(box.h - tileH - 16, 0)
+  const clock = Math.max(Math.min(Math.floor(topH * 0.5), Math.floor(box.w * 0.16)), 0)
+  return {
+    tileH,
+    clock,
+    date: Math.max(Math.round(clock * 0.14), 12),
+    weather: Math.max(Math.round(clock * 0.12), 13),
+    num: Math.max(Math.round(tileH * 0.28), 16)
+  }
+}
 
 function useDash(ctx, path, interval) {
   return useQuery({
@@ -150,7 +181,7 @@ function Card({ title, aside, body, style }) {
   })
 }
 
-function Clock() {
+function Clock({ size }) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
@@ -159,18 +190,11 @@ function Clock() {
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const date = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })
   return jsxs('div', {
-    style: {
-      minWidth: 0,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      textAlign: 'center',
-      fontVariantNumeric: 'tabular-nums'
-    },
+    style: { minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' },
     children: [
       jsx('div', {
         style: {
-          fontSize: 'min(26cqh, 15cqw)',
+          fontSize: size.clock,
           fontWeight: 200,
           lineHeight: 0.95,
           letterSpacing: '-0.05em',
@@ -181,18 +205,18 @@ function Clock() {
         children: time
       }),
       jsx('div', {
-        style: { fontSize: 'min(3.6cqh, 2cqw)', color: DIM, marginTop: '1cqh', whiteSpace: 'nowrap' },
+        style: { fontSize: size.date, color: DIM, marginTop: Math.round(size.clock * 0.04), whiteSpace: 'nowrap' },
         children: date
       })
     ]
   })
 }
 
-function WeatherLine({ w }) {
+function WeatherLine({ w, size }) {
   const temp = w.temperature != null ? `${fmt(w.temperature, 1)}°` : '–'
   const parts = [w.state, w.humidity != null ? `${fmt(w.humidity)}% humidity` : null].filter(Boolean)
   return jsx('div', {
-    style: { fontSize: 'min(3.2cqh, 1.8cqw)', color: DIM, textAlign: 'center', whiteSpace: 'nowrap' },
+    style: { fontSize: size.weather, color: DIM, textAlign: 'center', whiteSpace: 'nowrap', marginTop: 8 },
     children: [temp, ...parts].join(' · ')
   })
 }
@@ -221,22 +245,30 @@ function LightTile({ ctx, qc, light: l }) {
   })
 }
 
-function RoomTile({ c }) {
+function RoomTile({ c, numPx }) {
   return jsx(Card, {
     title: c.name,
     body: [
-      jsx('div', { style: { ...NUM, marginTop: 'auto' }, children: c.temp != null ? `${fmt(c.temp, 1)}°` : '–' }),
+      jsx('div', { style: { ...numStyle(numPx), marginTop: 'auto' }, children: c.temp != null ? `${fmt(c.temp, 1)}°` : '–' }),
       c.hum != null ? jsx('div', { style: { fontSize: 13, color: DIM }, children: `${fmt(c.hum)}% humidity` }) : null
     ]
   })
 }
 
-function BoxRow({ ctx, qc, lights, climate }) {
+function BoxRow({ ctx, qc, lights, climate, height, numPx }) {
   return jsxs('div', {
-    style: BOXROW,
+    style: {
+      flex: 'none',
+      height,
+      minHeight: 0,
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+      gridTemplateRows: 'minmax(0, 1fr)',
+      gap: 14
+    },
     children: [
       ...lights.map(l => jsx(LightTile, { key: l.id, ctx, qc, light: l })),
-      ...climate.map(c => jsx(RoomTile, { key: c.name, c }))
+      ...climate.map(c => jsx(RoomTile, { key: c.name, c, numPx }))
     ]
   })
 }
@@ -244,21 +276,34 @@ function BoxRow({ ctx, qc, lights, climate }) {
 function HomeTab({ ctx }) {
   const qc = useQueryClient()
   const snap = useDash(ctx, '/snapshot', 15000)
+  const [ref, box] = useBox()
   const blocked = gate(snap, 'Home data')
-  if (blocked) return blocked
+  const s = homeSizes(box)
 
-  return jsxs('div', {
+  return jsx('div', {
+    ref,
     style: HOME,
-    children: [
-      jsxs('div', {
-        style: TOP,
-        children: [
-          jsx(Clock, {}),
-          jsx(WeatherLine, { w: snap.data.weather })
+    children: blocked
+      ? blocked
+      : [
+          jsxs('div', {
+            key: 'top',
+            style: TOP,
+            children: [
+              jsx(Clock, { size: s }),
+              jsx(WeatherLine, { w: snap.data.weather, size: s })
+            ]
+          }),
+          jsx(BoxRow, {
+            key: 'boxes',
+            ctx,
+            qc,
+            lights: snap.data.lights || [],
+            climate: snap.data.climate || [],
+            height: s.tileH,
+            numPx: s.num
+          })
         ]
-      }),
-      jsx(BoxRow, { ctx, qc, lights: snap.data.lights || [], climate: snap.data.climate || [] })
-    ]
   })
 }
 
@@ -333,7 +378,7 @@ function PlugCard({ plug: p, series: s }) {
       jsxs('div', {
         style: { display: 'flex', alignItems: 'baseline', gap: 8 },
         children: [
-          jsx('div', { style: NUM, children: p.watts != null ? fmt(p.watts) : '–' }),
+          jsx('div', { style: numStyle(30), children: p.watts != null ? fmt(p.watts) : '–' }),
           jsx('div', { style: { fontSize: 14, color: DIM }, children: 'W' })
         ]
       }),
