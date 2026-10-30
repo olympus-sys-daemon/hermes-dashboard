@@ -44,7 +44,7 @@ const GLOW = `color-mix(in srgb, ${ACCENT} 22%, transparent)`
 // The page is a size container. Everything inside sizes itself in cqw/cqh, measured against this box.
 const PAGE = {
   width: '100%',
-  height: '100%',
+  height: '100vh',
   minHeight: 0,
   boxSizing: 'border-box',
   padding: '12px 20px 16px',

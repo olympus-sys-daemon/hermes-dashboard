@@ -16,6 +16,7 @@ check('tabs are home and energy only', /id: 'home'/.test(src) && /id: 'energy'/.
 check('no forecast in the page', !/forecast/i.test(src))
 check('no wind figure (the word "window" is fine)', !/\bwind\b/i.test(src))
 check('no fixed 50vh clock', !/50vh/.test(src))
+check('page height is bound to the window (100vh), not the parent', /height: '100vh'/.test(src))
 check('nothing scrolls: no auto or scroll overflow anywhere', !/overflow(Y|X)?: '(auto|scroll)'/.test(src))
 check('page is clipped to its box (overflow hidden)', /overflow: 'hidden'/.test(src))
 check('no page title above the content', !/children: 'Dashboard'/.test(src))
