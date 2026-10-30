@@ -29,6 +29,9 @@ check('home boxes are a single row of four', /repeat\(4, minmax\(0, 1fr\)\)/.tes
 const homeSrc = src.slice(src.indexOf('function Clock'), src.indexOf('function Spark'))
 check('light tiles have Daylight and Night light preset buttons',
   /lightAction\(ctx, qc, l\.id, 'effect', 'Daylight'\)/.test(src) && /lightAction\(ctx, qc, l\.id, 'effect', 'Night light'\)/.test(src))
+check('clock is 24-hour (hourCycle h23, not AM/PM)', /hourCycle: 'h23'/.test(src) && !/hour12: true/.test(src))
+check('light buttons are xs and sit in three equal columns that cannot spill',
+  /size: 'xs'/.test(src) && /repeat\(3, minmax\(0, 1fr\)\)/.test(src))
 check('home section (clock, weather, boxes) has no graphs or stats', !/Spark|Stats|svg|viewBox/.test(homeSrc))
 check('no hardcoded colours', !/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(src))
 check('no JSX syntax', !/<[A-Za-z][A-Za-z0-9]*[\s/>]/.test(src.replace(/\/\/.*$/gm, '')))

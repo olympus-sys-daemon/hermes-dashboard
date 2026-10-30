@@ -80,6 +80,8 @@ const CARD = {
   overflow: 'hidden'
 }
 const TITLE = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }
+// Light preset buttons: one cell each, text clipped inside its cell so it can never spill out of the tile.
+const MINI_BTN = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 2px' }
 const numStyle = px => ({
   fontSize: px,
   fontWeight: 300,
@@ -187,7 +189,7 @@ function Clock({ size }) {
     const t = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
-  const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
   const date = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })
   return jsxs('div', {
     style: { minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' },
@@ -232,28 +234,37 @@ function LightTile({ ctx, qc, light: l }) {
     body: [
       jsx('div', { style: { fontSize: 13, color: DIM }, children: detail }),
       jsxs('div', {
-        style: { marginTop: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' },
+        style: {
+          marginTop: 'auto',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 4,
+          minWidth: 0
+        },
         children: [
           jsx(Button, {
             variant: 'chip',
-            size: 'sm',
+            size: 'xs',
             disabled: unreachable,
+            style: MINI_BTN,
             onClick: () => lightAction(ctx, qc, l.id, 'toggle'),
-            children: off ? 'Turn on' : 'Turn off'
+            children: off ? 'On' : 'Off'
           }),
           jsx(Button, {
             variant: 'chip',
-            size: 'sm',
+            size: 'xs',
             disabled: unreachable,
+            style: MINI_BTN,
             onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Daylight'),
             children: 'Daylight'
           }),
           jsx(Button, {
             variant: 'chip',
-            size: 'sm',
+            size: 'xs',
             disabled: unreachable,
+            style: MINI_BTN,
             onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Night light'),
-            children: 'Night light'
+            children: 'Night'
           })
         ]
       })
