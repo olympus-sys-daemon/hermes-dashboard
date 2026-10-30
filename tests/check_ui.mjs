@@ -27,6 +27,8 @@ check('clock is not placed in a column (no fractional three-column layout)', !/m
 check('clock stacks above date, weather text and the box row', /function HomeTab[\s\S]*?Clock[\s\S]*?WeatherLine[\s\S]*?BoxRow/.test(src))
 check('home boxes are a single row of four', /repeat\(4, minmax\(0, 1fr\)\)/.test(src))
 const homeSrc = src.slice(src.indexOf('function Clock'), src.indexOf('function Spark'))
+check('light tiles have Daylight and Night light preset buttons',
+  /lightAction\(ctx, qc, l\.id, 'effect', 'Daylight'\)/.test(src) && /lightAction\(ctx, qc, l\.id, 'effect', 'Night light'\)/.test(src))
 check('home section (clock, weather, boxes) has no graphs or stats', !/Spark|Stats|svg|viewBox/.test(homeSrc))
 check('no hardcoded colours', !/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(src))
 check('no JSX syntax', !/<[A-Za-z][A-Za-z0-9]*[\s/>]/.test(src.replace(/\/\/.*$/gm, '')))

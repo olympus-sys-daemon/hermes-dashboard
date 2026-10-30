@@ -231,15 +231,31 @@ function LightTile({ ctx, qc, light: l }) {
     aside: status,
     body: [
       jsx('div', { style: { fontSize: 13, color: DIM }, children: detail }),
-      jsx('div', {
-        style: { marginTop: 'auto' },
-        children: jsx(Button, {
-          variant: 'chip',
-          size: 'sm',
-          disabled: unreachable,
-          onClick: () => lightAction(ctx, qc, l.id, 'toggle'),
-          children: off ? 'Turn on' : 'Turn off'
-        })
+      jsxs('div', {
+        style: { marginTop: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' },
+        children: [
+          jsx(Button, {
+            variant: 'chip',
+            size: 'sm',
+            disabled: unreachable,
+            onClick: () => lightAction(ctx, qc, l.id, 'toggle'),
+            children: off ? 'Turn on' : 'Turn off'
+          }),
+          jsx(Button, {
+            variant: 'chip',
+            size: 'sm',
+            disabled: unreachable,
+            onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Daylight'),
+            children: 'Daylight'
+          }),
+          jsx(Button, {
+            variant: 'chip',
+            size: 'sm',
+            disabled: unreachable,
+            onClick: () => lightAction(ctx, qc, l.id, 'effect', 'Night light'),
+            children: 'Night light'
+          })
+        ]
       })
     ]
   })
