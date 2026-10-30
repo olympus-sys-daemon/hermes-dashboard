@@ -65,11 +65,11 @@ const TOP = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: '1.5cqh',
-  paddingBottom: '4cqh'
+  paddingBottom: '2cqh'
 }
 const BOXROW = {
   flex: 'none',
-  height: '24cqh',
+  height: '20cqh',
   minHeight: 0,
   display: 'grid',
   gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
@@ -170,7 +170,7 @@ function Clock() {
     children: [
       jsx('div', {
         style: {
-          fontSize: 'min(30cqh, 17cqw)',
+          fontSize: 'min(26cqh, 15cqw)',
           fontWeight: 200,
           lineHeight: 0.95,
           letterSpacing: '-0.05em',
