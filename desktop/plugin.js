@@ -1,8 +1,8 @@
 /**
  * Home dashboard page for the Hermes desktop app.
  * Data comes from the plugin backend (plugin_api.py) via ctx.rest. The HA token never reaches this file.
- * Two tabs: Home (weather, lights, clock, rooms) and Energy (plugs). Nothing scrolls. Sizes are shares of
- * the page box (container units), so the layout fits whatever size the pane has.
+ * Two tabs: Home (clock, date, weather line, four small boxes) and Energy (plugs). Nothing scrolls.
+ * Sizes are shares of the page box (container units), so the layout fits whatever size the pane has.
  * Built only from the SDK UI kit and app theme variables. Plain ESM, no JSX.
  */
 
@@ -56,15 +56,26 @@ const PAGE = {
   containerType: 'size'
 }
 const BODY = { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }
-const HOME = {
+const HOME = { flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }
+const TOP = {
   flex: 1,
   minHeight: 0,
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1fr)',
-  gridTemplateRows: 'minmax(0, 1fr)',
-  gap: 16
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '1.5cqh',
+  paddingBottom: '4cqh'
 }
-const COLUMN = { minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }
+const BOXROW = {
+  flex: 'none',
+  height: '24cqh',
+  minHeight: 0,
+  display: 'grid',
+  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+  gridTemplateRows: 'minmax(0, 1fr)',
+  gap: 14
+}
 const CARD = {
   minHeight: 0,
   minWidth: 0,
@@ -80,12 +91,13 @@ const CARD = {
 }
 const TITLE = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }
 const NUM = {
-  fontSize: 'min(9cqh, 5cqw)',
+  fontSize: 'min(7cqh, 4.5cqw)',
   fontWeight: 300,
   lineHeight: 1,
   letterSpacing: '-0.02em',
   fontVariantNumeric: 'tabular-nums'
 }
+const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }
 
 const fmt = (v, digits = 0) => (v == null || Number.isNaN(Number(v)) ? '–' : Number(v).toFixed(digits))
 
@@ -149,21 +161,18 @@ function Clock() {
   return jsxs('div', {
     style: {
       minWidth: 0,
-      minHeight: 0,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: '1cqh',
       textAlign: 'center',
       fontVariantNumeric: 'tabular-nums'
     },
     children: [
       jsx('div', {
         style: {
-          fontSize: 'min(42cqh, 15cqw)',
+          fontSize: 'min(30cqh, 17cqw)',
           fontWeight: 200,
-          lineHeight: 0.9,
+          lineHeight: 0.95,
           letterSpacing: '-0.05em',
           color: TEXT,
           whiteSpace: 'nowrap',
@@ -172,9 +181,83 @@ function Clock() {
         children: time
       }),
       jsx('div', {
-        style: { fontSize: 'min(4.2cqh, 2.2cqw)', color: DIM, letterSpacing: '0.02em', whiteSpace: 'nowrap' },
+        style: { fontSize: 'min(3.6cqh, 2cqw)', color: DIM, marginTop: '1cqh', whiteSpace: 'nowrap' },
         children: date
       })
+    ]
+  })
+}
+
+function WeatherLine({ w }) {
+  const temp = w.temperature != null ? `${fmt(w.temperature, 1)}°` : '–'
+  const parts = [w.state, w.humidity != null ? `${fmt(w.humidity)}% humidity` : null].filter(Boolean)
+  return jsx('div', {
+    style: { fontSize: 'min(3.2cqh, 1.8cqw)', color: DIM, textAlign: 'center', whiteSpace: 'nowrap' },
+    children: [temp, ...parts].join(' · ')
+  })
+}
+
+function LightTile({ ctx, qc, light: l }) {
+  const off = l.state === 'off'
+  const unreachable = l.state === 'unavailable'
+  const status = unreachable ? 'Unreachable' : off ? 'Off' : 'On'
+  const detail = unreachable ? 'No reply' : off ? 'Light is off' : l.effect || 'On'
+  return jsx(Card, {
+    title: l.name,
+    aside: status,
+    body: [
+      jsx('div', { style: { fontSize: 13, color: DIM }, children: detail }),
+      jsx('div', {
+        style: { marginTop: 'auto' },
+        children: jsx(Button, {
+          variant: 'chip',
+          size: 'sm',
+          disabled: unreachable,
+          onClick: () => lightAction(ctx, qc, l.id, 'toggle'),
+          children: off ? 'Turn on' : 'Turn off'
+        })
+      })
+    ]
+  })
+}
+
+function RoomTile({ c }) {
+  return jsx(Card, {
+    title: c.name,
+    body: [
+      jsx('div', { style: { ...NUM, marginTop: 'auto' }, children: c.temp != null ? `${fmt(c.temp, 1)}°` : '–' }),
+      c.hum != null ? jsx('div', { style: { fontSize: 13, color: DIM }, children: `${fmt(c.hum)}% humidity` }) : null
+    ]
+  })
+}
+
+function BoxRow({ ctx, qc, lights, climate }) {
+  return jsxs('div', {
+    style: BOXROW,
+    children: [
+      ...lights.map(l => jsx(LightTile, { key: l.id, ctx, qc, light: l })),
+      ...climate.map(c => jsx(RoomTile, { key: c.name, c }))
+    ]
+  })
+}
+
+function HomeTab({ ctx }) {
+  const qc = useQueryClient()
+  const snap = useDash(ctx, '/snapshot', 15000)
+  const blocked = gate(snap, 'Home data')
+  if (blocked) return blocked
+
+  return jsxs('div', {
+    style: HOME,
+    children: [
+      jsxs('div', {
+        style: TOP,
+        children: [
+          jsx(Clock, {}),
+          jsx(WeatherLine, { w: snap.data.weather })
+        ]
+      }),
+      jsx(BoxRow, { ctx, qc, lights: snap.data.lights || [], climate: snap.data.climate || [] })
     ]
   })
 }
@@ -242,86 +325,6 @@ function Stats({ stats, unit = '' }) {
   })
 }
 
-function WeatherCard({ w }) {
-  const bits = [w.state, w.humidity != null ? `${fmt(w.humidity)}% humidity` : null].filter(Boolean)
-  return jsx(Card, {
-    title: 'Weather today',
-    aside: 'Outside',
-    body: [
-      jsx('div', {
-        style: { ...NUM, fontSize: 'min(16cqh, 8cqw)' },
-        children: w.temperature != null ? `${fmt(w.temperature, 1)}°` : '–'
-      }),
-      jsx('div', { style: { fontSize: 14, color: DIM }, children: bits.join(' · ') })
-    ]
-  })
-}
-
-function LightCard({ ctx, qc, light: l, style }) {
-  const off = l.state === 'off'
-  const unreachable = l.state === 'unavailable'
-  const status = unreachable ? 'Unreachable' : off ? 'Off' : 'On'
-  const detail = unreachable
-    ? 'Home Assistant reports the light unavailable'
-    : off
-      ? 'Light is off'
-      : `${l.effect || 'Custom'}${l.brightness != null ? ` · ${Math.round((l.brightness / 255) * 100)}%` : ''}`
-  const act = (action, value) => lightAction(ctx, qc, l.id, action, value)
-  return jsx(Card, {
-    title: l.name,
-    aside: status,
-    style,
-    body: [
-      jsx('div', { style: { fontSize: 13, color: DIM }, children: detail }),
-      jsxs('div', {
-        style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 'auto' },
-        children: [
-          jsx(Button, {
-            variant: 'chip',
-            size: 'sm',
-            disabled: unreachable,
-            onClick: () => act('toggle'),
-            children: off ? 'Turn on' : 'Turn off'
-          }),
-          jsx(Button, {
-            variant: 'chip',
-            size: 'sm',
-            disabled: unreachable,
-            onClick: () => act('effect', 'Daylight'),
-            children: 'Daylight'
-          }),
-          jsx(Button, {
-            variant: 'chip',
-            size: 'sm',
-            disabled: unreachable,
-            onClick: () => act('effect', 'Night light'),
-            children: 'Night light'
-          })
-        ]
-      })
-    ]
-  })
-}
-
-function RoomCard({ c, t, style }) {
-  return jsx(Card, {
-    title: c.name,
-    aside: '24 h',
-    style,
-    body: [
-      jsxs('div', {
-        style: { display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' },
-        children: [
-          jsx('div', { style: NUM, children: c.temp != null ? `${fmt(c.temp, 1)}°` : '–' }),
-          c.hum != null ? jsx('div', { style: { fontSize: 13, color: DIM }, children: `${fmt(c.hum)}% humidity` }) : null
-        ]
-      }),
-      jsx(Spark, { points: t.points }),
-      jsx(Stats, { stats: t.stats, unit: '°' })
-    ]
-  })
-}
-
 function PlugCard({ plug: p, series: s }) {
   return jsx(Card, {
     title: p.name,
@@ -340,38 +343,6 @@ function PlugCard({ plug: p, series: s }) {
       }),
       jsx(Spark, { points: s.points }),
       jsx(Stats, { stats: s.stats, unit: ' W' })
-    ]
-  })
-}
-
-function HomeTab({ ctx }) {
-  const qc = useQueryClient()
-  const snap = useDash(ctx, '/snapshot', 15000)
-  const hist = useDash(ctx, '/history?hours=24', 240000)
-  const blocked = gate(snap, 'Home data')
-  if (blocked) return blocked
-
-  const lights = snap.data.lights || []
-  const climate = snap.data.climate || []
-  const series = hist.data?.series || {}
-
-  return jsxs('div', {
-    style: HOME,
-    children: [
-      jsxs('div', {
-        style: COLUMN,
-        children: [
-          jsx(WeatherCard, { w: snap.data.weather }),
-          ...lights.map(l => jsx(LightCard, { key: l.id, ctx, qc, light: l, style: { flex: 1 } }))
-        ]
-      }),
-      jsx(Clock, {}),
-      jsx('div', {
-        style: COLUMN,
-        children: climate.map(c =>
-          jsx(RoomCard, { key: c.name, c, t: series[c.series] || {}, style: { flex: 1 } })
-        )
-      })
     ]
   })
 }
